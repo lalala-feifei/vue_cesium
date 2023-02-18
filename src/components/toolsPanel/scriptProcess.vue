@@ -46,6 +46,7 @@
         max-height="350"
         style="width: 100%"
         size="mini"
+        @select="addEntity"
         @selection-change="handleSelectionChange"
       >
         <el-table-column label="日期" width="85">
@@ -57,11 +58,16 @@
       </el-table>
 
       <div class="process">
-        <el-button type="primary" size="mini" @click="productList"
-          >生成list</el-button
+        <el-button
+          type="primary"
+          :disabled="disabledProductFolder"
+          size="mini"
+          @click="productFolder"
+          >数据准备</el-button
         >
+
         <el-select
-          v-model="value"
+          v-model="selectValue"
           :disabled="selectDisable"
           size="mini"
           clearable
@@ -77,13 +83,27 @@
         </el-select>
         <el-button
           type="primary"
+          :disabled="disabledProductCoordinateFileandOPOD"
+          size="mini"
+          @click="productCoordinateFileandOPOD"
+          >图像生成</el-button
+        >
+        <!-- <el-button
+          type="primary"
           size="mini"
           @click="showImg"
           :disabled="runAble"
           >查看影像</el-button
-        >
+        > -->
       </div>
-
+      <div
+        class="loading"
+        v-if="loadingFlag"
+        v-loading="loading"
+        element-loading-text="loadingText"
+        element-loading-spinner="el-icon-loading"
+        element-loading-background="rgba(0, 0, 0, 0.3)"
+      ></div>
       <div v-if="imgShow">
         <div
           class="SLC_img"
@@ -95,7 +115,6 @@
           <canvas id="mycanvas" ref="mycanvas" width="240" height="400">
             <img :src="SLC_img" ref="BmpImg" alt="" />
           </canvas>
-          <!-- <img :src="SLC_img" alt="" /> -->
         </div>
 
         <div class="burst">
@@ -141,7 +160,7 @@
               type="primary"
               size="mini"
               @click="productTops"
-              :disabled="runAble"
+              :disabled="fileProductAble"
               >文件生成</el-button
             >
           </div>
@@ -150,8 +169,8 @@
               type="primary"
               size="mini"
               @click="showBmp"
-              :disabled="runAble"
-              >查看BMP影像</el-button
+              :disabled="bmpShow"
+              >BMP影像</el-button
             >
           </div>
         </div>
@@ -164,10 +183,14 @@
       append-to-body
       :before-close="handleClose"
     >
-      <img :src="Bmp_img" ref="BmpImg" alt="" />
-      <!-- <canvas id="mycanvas" ref="mycanvas" width="1000" height="250">
+      <div
+        v-loading="bmpLoading"
+        :element-loading-text="bmpLoadingText"
+        element-loading-spinner="el-icon-loading"
+        element-loading-background="rgba(0, 0, 0, 0.3)"
+      >
         <img :src="Bmp_img" ref="BmpImg" alt="" />
-      </canvas> -->
+      </div>
 
       <div class="bmp_input">
         x轴起始点:
@@ -194,25 +217,35 @@
           placeholder="请输入选取的长度"
           size="mini"
         ></el-input>
-        <el-button type="primary" size="small" @click="splitBmp"
+        <el-button
+          type="primary"
+          :disabled="splitAble"
+          size="small"
+          @click="splitBmp"
           >切割</el-button
         >
       </div>
-      <!-- <span slot="footer" class="dialog-footer">
-        <el-button @click="dialogVisible = false">取 消</el-button>
-        <el-button type="primary" @click="dialogVisible = false"
-          >确 定</el-button
-        >
-      </span> -->
     </el-dialog>
   </div>
 </template>
   
 
 <script>
+import { log } from "console";
+
 export default {
   data() {
     return {
+      bmpLoadingText: "影像生成中",
+      splitAble: false,
+      bmpLoading: true,
+      fileProductAble: false,
+      bmpShow: true,
+      disabledProductCoordinateFileandOPOD: true,
+      disabledProductFolder: false,
+      loadingText: "...",
+      loadingFlag: false,
+      folderName: "",
       loading: true,
       bmpCol: "",
       bmpWidth: "",
@@ -226,7 +259,7 @@ export default {
       dynamicComponents: null,
       dialogVisible: false,
       drawer: false,
-      value: "",
+      selectValue: "",
       runAble: true,
       selectDisable: true,
       SLC_img: "",
@@ -291,8 +324,61 @@ export default {
     }
   },
   methods: {
-    splitBmp() {
+    async productCoordinateFileandOPOD() {
+      this.loadingFlag = true;
+      this.loadingText = "图像生成ing";
+
+      this.disabledProductCoordinateFileandOPOD = true;
+
+      console.log(this.folderName);
+      let paramsForOPOD = {
+        dateArr: this.options.map((element) => {
+          return element["date"];
+        }),
+        folderName: this.folderName,
+      };
+      console.log(paramsForOPOD);
+
+      let resForOPOD = await this.$axios.getOPOD(paramsForOPOD);
+
+      let coordinatesParams = {
+        selectFile: this.selectValue,
+        folderName: this.folderName,
+      };
+      let resForCoordinateFile = await this.$axios
+        .productCoordinateFile(coordinatesParams)
+        .then((res) => {
+          console.log(res);
+          this.loadingFlag = false;
+        });
+
+      this.showImg();
+    },
+    productFolder() {
+      this.disabledProductFolder = true;
+      this.loadingFlag = true;
+      this.loadingText = "正在建立文件夹";
       let params = {
+        zipList: this.options.map((element) => {
+          return element["fileName"];
+        }),
+      };
+      console.log(params);
+      this.$axios.productFolder(params).then((res) => {
+        console.log(res);
+        this.folderName = res;
+        this.loadingFlag = false;
+        this.$alert("文件夹已建立");
+      });
+      this.selectDisable = false;
+    },
+    splitBmp() {
+      this.splitAble = true;
+      this.bmpLoadingText = "正在切割ing";
+      this.bmpLoading = true;
+      let params = {
+        cutTime: this.cutTime,
+        folderName: this.folderName,
         bmpRow: this.bmpRow,
         bmpWidth: this.bmpWidth,
         bmpCol: this.bmpCol,
@@ -300,6 +386,7 @@ export default {
       };
       this.$axios.splitBmp(params).then((res) => {
         console.log(res);
+        this.bmpLoading = false;
         this.$alert("影像已切割");
       });
     },
@@ -309,7 +396,7 @@ export default {
       var img = new Image();
       img.src = this.SLC_img;
       img.onload = function () {
-        ctx.drawImage(img, 0, 0, 250, 900);
+        ctx.drawImage(img, 0, 0, 240, 400);
         // 设置间隔
         var space = 80;
 
@@ -339,78 +426,74 @@ export default {
         }
       };
     },
-    showBmp() {
-      let params = {
-        bmpTitle: this.value.slice(17, 25) + ".rslc.bmp",
-      };
-
-      this.$axios.getBmp(params).then((res) => {
-        const myBlob = new window.Blob([res], { type: "image/bmp" });
-        this.Bmp_img = window.URL.createObjectURL(res.data);
-      });
-      this.canvasFlag = 1;
-      this.dialogVisible = true;
-    },
-    async showImg() {
-      this.imgShow = true;
-      let params = {
-        imgTitle: this.value,
-      };
-      let paramsForOPOD = {
-        dateArr: this.options.map((element) => {
-          return element["date"];
-        }),
-      };
-      console.log(paramsForOPOD);
-      let resForOPOD = await this.$axios.getOPOD(paramsForOPOD);
-      console.log(resForOPOD);
-
-      // const myBlob = new window.Blob([resForImg], { type: "image/png" });
-      // this.SLC_img = window.URL.createObjectURL(myBlob);
-      // console.log(this.SLC_img);
-      this.$axios.getImg(params).then((res) => {
-        const myBlob = new window.Blob([res], { type: "image/png" });
-        this.SLC_img = window.URL.createObjectURL(res.data);
-        console.log(this.SLC_img);
-      });
-      this.loading = false;
-      this.canvasFlag = 1;
-    },
-    async productTops() {
+    productTops() {
+      this.bmpShow = false;
+      this.fileProductAble = true;
       let params = {
         iw: this.iw_value,
         burst_num: this.burst_num,
         burst_first: this.burst_first,
         cutTime: this.cutTime,
+        folderName: this.folderName,
       };
-      // let resForTop = await this.$axios.productTOPS(params)
-      // if(resForTop =='success'){
-      //   this.$alert("TOPS文件已生成，请在后台查看！");
-      // }
+
       this.$axios.productTOPS(params).then(
         (res) => {
-          console.log(res);
+          console.log("res", res);
           this.$alert("TOPS文件已生成，请在后台查看！");
         },
         (err) => {
-          this.$alert("TOPS文件已生成，请在后台查看！");
+          console.log("error", err);
+          this.$alert("TOPS文件已生成，请在后台查看");
         }
       );
-
-      // this.$axios.getBmp(params).then((res) => {
-      //   const myBlob = new window.Blob([res], { type: "image/bmp" });
-      //   this.Bmp_img = window.URL.createObjectURL(res.data);
-      // });
     },
+    showBmp() {
+      this.runAble = false;
+      this.bmpShow = true;
+      let params = {
+        bmpTitle: this.cutTime + ".rslc.bmp",
+        // bmpTitle:"20220901.rslc.bmp",
+        folderName: this.folderName,
+      };
+
+      this.$axios.getBmp(params).then((res) => {
+        const myBlob = new window.Blob([res], { type: "image/bmp" });
+        this.Bmp_img = window.URL.createObjectURL(res.data);
+        console.log(this.Bmp_img);
+        this.bmpLoading = false;
+      });
+      this.dialogVisible = true;
+      // this.canvasFlag = 1;
+    },
+    async showImg() {
+      this.imgShow = true;
+      let params = {
+        imgTitle: this.selectValue,
+        folderName: this.folderName,
+        cutTime: this.cutTime,
+      };
+
+      this.$axios.getImg(params).then((res) => {
+        const myBlob = new window.Blob([res], { type: "image/png" });
+        this.SLC_img = window.URL.createObjectURL(res.data);
+
+        console.log(this.SLC_img);
+      });
+      this.loading = false;
+      this.canvasFlag = 1;
+    },
+
     changeIWValue() {
       this.inputShow = false;
       console.log(this.iw_value);
     },
     changeCutValue() {
       this.runAble = false;
-      console.log(this.value);
-      console.log(this.value.slice(17, 25));
-      this.cutTime = this.value.slice(17, 25);
+      this.disabledProductCoordinateFileandOPOD = false;
+      console.log(this.selectValue);
+      console.log(this.selectValue.slice(17, 25));
+      this.cutTime = this.selectValue.slice(17, 25);
     },
     productList() {
       this.selectDisable = false;
@@ -429,8 +512,71 @@ export default {
         }
       );
     },
+    addEntity(selection, row) {
+      console.log(selection, row);
+      let selected = selection.length && selection.indexOf(row) !== -1;
+      let redID = row.fileName;
+      let whiteID = "dem" + row.fileName;
+      if (selected === true) {
+        // row.isDisabled = true; //这个isDisabled 是每行数据里都存在的一个属性
+        let params = {
+          title: row.fileName,
+        };
+        this.$axios.getFootprintAndDemFootprint(params).then(
+          (res) => {
+            // console.log(res);
+            let footprint = res["footprint"];
+            let demFootPrint = res["demFootPrint"];
+            // console.log(footprint);
+
+            let whiteEntity = !this.viewer.entities.getById(whiteID)&&this.viewer.entities.add({
+              id: whiteID,
+              name: "polygon_height",
+              polygon: {
+                show: true,
+                hierarchy: Cesium.Cartesian3.fromDegreesArray(demFootPrint),
+                height: 0,
+                material: Cesium.Color.WHITE.withAlpha(0.3),
+                fill: true,
+                outline: true,
+                outlineWidth: 1.0,
+                outlineColor: Cesium.Color.WHITE,
+              },
+            });
+            // console.log(whiteEntity);
+            let redEntity = !this.viewer.entities.getById(redID)&&this.viewer.entities.add({
+              id: redID,
+              name: "polygon_height",
+              polygon: {
+                show: true,
+                hierarchy: Cesium.Cartesian3.fromDegreesArray(footprint),
+                height: 0,
+                material: Cesium.Color.RED.withAlpha(0.3),
+                fill: true,
+                outline: true,
+                outlineWidth: 1.0,
+                outlineColor: Cesium.Color.RED,
+              },
+            });
+            redEntity && this.viewer.flyTo(redEntity, {
+              offset: new Cesium.HeadingPitchRange(0, -90, 1500000),
+            });
+          },
+          (err) => {
+            console.log(23232, err);
+          }
+        );
+      } else {
+        // row.isDisabled = false;
+        console.log(row.fileName);
+
+        let whiteID = row.fileName;
+        let redID = "dem" + row.fileName;
+        this.viewer.entities.removeById(whiteID);
+        this.viewer.entities.removeById(redID);
+      }
+    },
     handleSelectionChange(val) {
-      console.log(val);
       this.multipleSelection = val;
       this.options = val;
     },
@@ -475,12 +621,14 @@ export default {
 .scriptsComponents {
   position: absolute;
 }
+
 .title {
   color: black;
   text-align: left;
   padding-left: 5px;
   font-size: 14px;
 }
+
 /* ::v-deep .el-dialog__body .el-table {
   margin-left: 20px;
 } */
@@ -494,14 +642,20 @@ export default {
   width: 1000px !important;
 }
 
+::v-deep .el-loading-spinner {
+  margin-top: 10px;
+}
+
 ::v-deep .el-dialog .el-dialog__body {
   padding: 0;
 }
+
 ::v-deep .el-dialog img {
   margin-top: 0;
   width: 1000px;
   height: 250px;
 }
+
 /* .bmp_input{
   display: flex;
 } */
@@ -510,9 +664,11 @@ export default {
   margin-right: 20px;
   width: 150px;
 }
+
 .process {
   display: flex;
 }
+
 .process ::v-deep .el-select {
   flex: 1;
   margin-top: 5px;
@@ -522,7 +678,7 @@ img {
   margin-top: 10px;
   /* position: relative; */
 
-  width: 250px;
+  width: 300px;
   /* transform: rotate(90deg); */
 }
 
@@ -530,6 +686,7 @@ img {
   float: left;
   margin-left: 5px;
 }
+
 .burst {
   float: left;
   width: 20%;
@@ -537,13 +694,16 @@ img {
   margin-left: 20px;
   color: black;
 }
+
 .burst ::v-deep .el-input {
   /* margin-top: 10px; */
   width: 120px;
 }
+
 .select_title {
   margin-left: 0;
 }
+
 .right_select {
   margin-top: 10px;
 }

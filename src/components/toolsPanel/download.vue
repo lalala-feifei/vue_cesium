@@ -153,6 +153,7 @@ export default {
   },
   methods: {
     detail(rowIndex) {
+      console.log(this.res);
       this.dialogVisible = !this.dialogVisible;
       this.fileid = this.footprints[rowIndex].properties.id;
       this.fileMode = this.footprints[rowIndex].properties.polarisationmode;
@@ -199,8 +200,9 @@ export default {
     downloadById(productId){
       let params = {
         productId: productId,
+        demFootPrint:DrawTool.pointArrForDegrees,
       }; 
-
+      console.log(params);
       this.$alert("正在后台下载，请耐心等待！", "通知", {
         confirmButtonText: "确定",
         callback: (action) => {
@@ -244,6 +246,7 @@ export default {
         endDate: this.endDate,
         geojson: this.geojson,
       };
+      console.log(params);
       this.$axios.getSLCData(params).then(
         (res) => {
           if (res.success) {
@@ -256,8 +259,10 @@ export default {
             this.footprints = res.footprint;
             this.footprints.forEach((item, index) => {
               let footprint = item.geometry.coordinates[0];
+              // console.log(footprint);
+              
               let degreesArray = this.flatten(footprint);
-              // console.log(degreesArray);
+              console.log(degreesArray);
               this.viewer.entities.add({
                 id: "polygon_" + index,
                 name: "polygon_height",

@@ -25,8 +25,8 @@ export default {
     return Get('http://127.0.0.1:5000/getDownloadData')
   },
   downloadById: (params) => {
-    return Get('http://192.168.153.11:80/downloadById', params)
-    return Get('http://127.0.0.1:5000/downloadById',params)
+    return Post('http://192.168.153.11:80/downloadById', params)
+    return Post('http://127.0.0.1:5000/downloadById',params)
   },
   productZipList: (params) => {
     return Post('http://192.168.153.11:80/productZipList', params)
@@ -57,6 +57,18 @@ export default {
   getOPOD:(params) =>{
     return Post('http://192.168.153.11:80/getOPOD', params)
     return Post('http://127.0.0.1:5000/getOPOD', params)
-  }
+  },
+  productFolder:(params) =>{
+    return Post('http://192.168.153.11:80/productFolder', params)
+    return Post('http://127.0.0.1:5000/productFolder', params)
+  },
 
+  productCoordinateFile:(params) =>{
+    return Post('http://192.168.153.11:80/productCoordinateFile', params)
+    return Post('http://127.0.0.1:5000/productCoordinateFile', params)
+  },
+  getFootprintAndDemFootprint:(params) => {
+    // return Get('http://192.168.153.11:80/getFootprintAndDemFootprint', params)
+    return Get('http://127.0.0.1:5000/getFootprintAndDemFootprint', params)
+  }
 }

@@ -23,7 +23,7 @@ export default {
     };
   },
   mounted() {
-    const self = this;
+    const self = this;``
     Globe.initGlobe();
     Globe.changeInitGlobe(self.viewer);
     Globe.flytochina_hz(115.0529, 39.1993, 117.5802, 40.6345, self.viewer);
