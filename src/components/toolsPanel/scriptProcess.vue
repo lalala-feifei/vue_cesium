@@ -37,6 +37,7 @@
       direction="rtl"
       append-to-body
       :before-close="handleClose"
+      size="800"
     >
       <div class="title">文件选择</div>
       <el-table
@@ -48,9 +49,16 @@
         size="mini"
         @select="addEntity"
         @selection-change="handleSelectionChange"
+        @select-all="selectAll"
       >
-        <el-table-column label="日期" width="85">
+        <el-table-column label="序号" width="45">
+          <template slot-scope="scope">{{ scope.$index }}</template>
+        </el-table-column>
+        <el-table-column label="文件日期" width="85">
           <template slot-scope="scope">{{ scope.row.date }}</template>
+        </el-table-column>
+        <el-table-column label="下载日期" width="85">
+          <template slot-scope="scope">{{ scope.row.download_time }}</template>
         </el-table-column>
         <el-table-column prop="fileName" label="文件名" width="260">
         </el-table-column>
@@ -62,7 +70,7 @@
           type="primary"
           :disabled="disabledProductFolder"
           size="mini"
-          @click="productFolder"
+          @click="productFolder().then(() => checkOPOD())"
           >数据准备</el-button
         >
 
@@ -75,7 +83,7 @@
           @change="changeCutValue()"
         >
           <el-option
-            v-for="(item, index) in options"
+            v-for="(item, index) in options_cut"
             :key="index"
             :value="item.fileName"
           >
@@ -112,67 +120,72 @@
           element-loading-spinner="el-icon-loading"
           element-loading-background="rgba(0, 0, 0, 0.3)"
         >
-          <canvas id="mycanvas" ref="mycanvas" width="240" height="400">
-            <img :src="SLC_img" ref="BmpImg" alt="" />
+          <canvas id="mycanvas" ref="mycanvas" width="400" height="240">
+            <img :src="SLC_img" ref="SLC_img" alt="" />
           </canvas>
         </div>
 
-        <div class="burst">
-          <div class="right_select">
-            <span class="select_title">条带: </span>
-            <el-select
-              v-model="iw_value"
-              size="mini"
-              placeholder="请选择"
-              @change="changeIWValue()"
-            >
-              <el-option
-                v-for="item in burst"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
+        <el-table :data="burstData" style="width: 100%">
+          <el-table-column prop="iw" label="iw" width="50"> </el-table-column>
+          <el-table-column label="burst_start" width="175">
+            <template slot-scope="scope">
+              <el-select
+                v-model="scope.row.burst_start"
+                @change="changeBurstParam(scope.row)"
+                size="mini"
               >
-              </el-option>
-            </el-select>
-          </div>
+                <el-option
+                  v-for="item in options_burst_start"
+                  :key="item.label"
+                  :label="item.label"
+                  :value="item.label"
+                >
+                </el-option>
+              </el-select>
+            </template>
+          </el-table-column>
 
-          <div class="right_select">
-            <span class="select_title">burst块数: </span>
-            <el-input
-              v-model="burst_num"
-              placeholder="请输入选取的burst块数"
-              size="mini"
-              :disabled="inputShow"
-            ></el-input>
-          </div>
+          <el-table-column label="burst_num" width="175">
+            <template slot-scope="scope">
+              <el-select
+                v-model="scope.row.burst_num"
+                @change="changeBurstParam(scope.row)"
+                size="mini"
+              >
+                <el-option
+                  v-for="item in options_burst_nums"
+                  :key="item.label"
+                  :label="item.label"
+                  :value="item.label"
+                >
+                </el-option>
+              </el-select>
+            </template>
+          </el-table-column>
+        </el-table>
 
-          <div class="right_select">
-            <span class="select_title">起始burst号:</span>
-            <el-input
-              v-model="burst_first"
-              placeholder="请输入起始burst号"
-              size="mini"
-              :disabled="inputShow"
-            ></el-input>
-          </div>
-          <div class="right_select">
-            <el-button
-              type="primary"
-              size="mini"
-              @click="productTops"
-              :disabled="fileProductAble"
-              >文件生成</el-button
-            >
-          </div>
-          <div class="right_select">
-            <el-button
-              type="primary"
-              size="mini"
-              @click="showBmp"
-              :disabled="bmpShow"
-              >BMP影像</el-button
-            >
-          </div>
+        <div class="right_select">
+          <el-button
+            type="primary"
+            size="mini"
+            :disabled="productTopsButtonShow"
+            @click="productTops"
+            >提交</el-button
+          >
+          <el-button
+            type="primary"
+            size="mini"
+            :disabled="topTaskStateShow"
+            @click="getTaskStatus"
+            >查看任务状态</el-button
+          >
+          <el-button
+            type="primary"
+            size="mini"
+            @click="showBmp"
+            :disabled="bmpShow"
+            >BMP影像</el-button
+          >
         </div>
       </div>
     </el-drawer>
@@ -189,7 +202,10 @@
         element-loading-spinner="el-icon-loading"
         element-loading-background="rgba(0, 0, 0, 0.3)"
       >
-        <img :src="Bmp_img" ref="BmpImg" alt="" />
+        <!-- <img :src="Bmp_img" ref="BmpImg" alt="" /> -->
+        <canvas id="BmpCanvas" ref="BmpCanvas" width="1000" height="250">
+          <img :src="Bmp_img" ref="Bmp_img" alt="" />
+        </canvas>
       </div>
 
       <div class="bmp_input">
@@ -221,7 +237,7 @@
           type="primary"
           :disabled="splitAble"
           size="small"
-          @click="splitBmp"
+          @click="splitBmp().then(() => checkSplit())"
           >切割</el-button
         >
       </div>
@@ -236,11 +252,22 @@ import { log } from "console";
 export default {
   data() {
     return {
+      bigLnglat: [],
+      smallLnglat: [],
+      img_small_left_top_x: 0,
+      img_small_left_top_y: 0,
+      img_small_right_top_x: 0,
+      img_small_right_top_y: 0,
+      img_small_left_bottom_x: 0,
+      img_small_left_bottom_y: 0,
+      img_small_right_bottom_x: 0,
+      img_small_right_bottom_y: 0,
+      demFootPrint: [],
+      footprint: [],
       bmpLoadingText: "影像生成中",
       splitAble: false,
       bmpLoading: true,
-      fileProductAble: false,
-      bmpShow: true,
+      bmpShow: false,
       disabledProductCoordinateFileandOPOD: true,
       disabledProductFolder: false,
       loadingText: "...",
@@ -252,6 +279,7 @@ export default {
       bmpRow: "",
       bmpHeight: "",
       canvasFlag: 0,
+      BmpCanvasFlag: 0,
       imgShow: false,
       selectIndex: -1,
       firstMenuShow: true,
@@ -267,40 +295,156 @@ export default {
       iw_value: "",
       inputShow: true,
       cutTime: "",
-      burst_num: "",
-      burst_first: "",
-      burst: [
+      tableData: [],
+      taskId: "",
+      taskId_list_OPOD: [],
+      splitTaskId: "",
+      topTaskStateShow: true,
+      productTopsButtonShow: false,
+      bmpPolygonPixel: [],
+      planTemplateColums: [
         {
-          value: "1",
-          label: "iw1",
-        },
-        {
-          value: "2",
-          label: "iw2",
-        },
-        {
-          value: "3",
-          label: "iw3",
+          burst_start: "burst起始块号",
         },
       ],
-      options: [
+      burstParam: {
+        iw1: {
+          burst_start: 0,
+          burst_nums: 0,
+        },
+        iw2: {
+          burst_start: 0,
+          burst_nums: 0,
+        },
+        iw3: {
+          burst_start: 0,
+          burst_nums: 0,
+        },
+      },
+      burstData: [
+        {
+          disabled: true,
+          value: "1",
+          iw: 1,
+          burst_start: "",
+          burst_num: "",
+        },
+        {
+          disabled: true,
+          value: "2",
+          iw: 2,
+          burst_start: "",
+          burst_num: "",
+        },
+        {
+          disabled: true,
+          value: "3",
+          iw: 3,
+          burst_start: "",
+          burst_num: "",
+        },
+      ],
+      options_cut: [
         {
           value: "选项1",
-          label:
-            "S1A_IW_SLC__1SDV_20221028T100541_20221028T100603_045641_057529_45F6",
+          label: "1",
         },
         {
           value: "选项2",
-          label:
-            "S1A_IW_SLC__1SDV_20221028T100541_20221028T100603_045641_057529_45F6",
+          label: "2",
         },
         {
           value: "选项3",
-          label:
-            "S1A_IW_SLC__1SDV_20221028T100541_20221028T100603_045641_057529_45F6",
+          label: "3",
         },
       ],
-      tableData: [],
+      options_burst_start: [
+        {
+          value: "选项1",
+          label: 1,
+        },
+        {
+          value: "选项2",
+          label: 2,
+        },
+        {
+          value: "选项3",
+          label: 3,
+        },
+        {
+          value: "选项4",
+          label: 4,
+        },
+        {
+          value: "选项5",
+          label: 5,
+        },
+
+        {
+          value: "选项6",
+          label: 6,
+        },
+        {
+          value: "选项7",
+          label: 7,
+        },
+        {
+          value: "选项8",
+          label: 8,
+        },
+        {
+          value: "选项9",
+          label: 9,
+        },
+        {
+          value: "选项10",
+          label: 10,
+        },
+      ],
+      options_burst_nums: [
+        {
+          value: "选项1",
+          label: 1,
+        },
+        {
+          value: "选项2",
+          label: 2,
+        },
+        {
+          value: "选项3",
+          label: 3,
+        },
+        {
+          value: "选项4",
+          label: 4,
+        },
+        {
+          value: "选项5",
+          label: 5,
+        },
+
+        {
+          value: "选项6",
+          label: 6,
+        },
+        {
+          value: "选项7",
+          label: 7,
+        },
+        {
+          value: "选项8",
+          label: 8,
+        },
+        {
+          value: "选项9",
+          label: 9,
+        },
+        {
+          value: "选项10",
+          label: 10,
+        },
+      ],
+
       multipleSelection: [],
     };
   },
@@ -308,12 +452,18 @@ export default {
     const self = this;
     var dateformat = require("dateformat-util");
     this.$axios.getDownloadData().then((res) => {
+      console.log(11111,res);
       res["Downloaded_data"].forEach((element) => {
         let time = dateformat.format(new Date(element["date"]), "yyyy-MM-dd");
         let fileName = element["title"];
+        let download_time = dateformat.format(
+          new Date(element["download_time"]),
+          "yyyy-MM-dd"
+        );
         self.tableData.push({
           date: time,
           fileName: fileName,
+          download_time: download_time,
         });
       });
     });
@@ -322,24 +472,16 @@ export default {
     if (this.canvasFlag) {
       this.draw();
     }
+    if (this.BmpCanvasFlag) {
+      this.BmpDraw();
+    }
   },
   methods: {
     async productCoordinateFileandOPOD() {
       this.loadingFlag = true;
       this.loadingText = "图像生成ing";
 
-      this.disabledProductCoordinateFileandOPOD = true;
-
       console.log(this.folderName);
-      let paramsForOPOD = {
-        dateArr: this.options.map((element) => {
-          return element["date"];
-        }),
-        folderName: this.folderName,
-      };
-      console.log(paramsForOPOD);
-
-      let resForOPOD = await this.$axios.getOPOD(paramsForOPOD);
 
       let coordinatesParams = {
         selectFile: this.selectValue,
@@ -359,18 +501,79 @@ export default {
       this.loadingFlag = true;
       this.loadingText = "正在建立文件夹";
       let params = {
-        zipList: this.options.map((element) => {
+        zipList: this.options_cut.map((element) => {
           return element["fileName"];
+        }),
+        dateArr: this.options_cut.map((element) => {
+          return element["date"];
         }),
       };
       console.log(params);
-      this.$axios.productFolder(params).then((res) => {
-        console.log(res);
-        this.folderName = res;
-        this.loadingFlag = false;
-        this.$alert("文件夹已建立");
+
+      return this.$axios.productFolder(params).then(
+        (res) => {
+          console.log(res);
+          this.folderName = res.folderName;
+          this.taskId_list_OPOD = res.taskId_list_OPOD;
+        },
+        (err) => {
+          this.$alert("文件夹建立失败，请重新尝试！");
+          this.disabledProductFolder = false;
+        }
+      );
+    },
+    checkOPOD() {
+      let params = {
+        taskId_list_OPOD: this.taskId_list_OPOD,
+      };
+      this.$axios.checkOPODDownload(params).then((res) => {
+        const status = res.status;
+        console.log(status);
+        // 如果任务已经完成，则返回任务结果
+        if (status === "SUCCESS") {
+          this.selectDisable = false;
+          this.loadingFlag = false;
+          this.$alert("文件夹已建立");
+        }
+        // 如果任务正在处理中，则等待一段时间后再次查询
+        else if (status === "PENDING") {
+          return new Promise((resolve) => {
+            setTimeout(() => resolve(this.checkOPOD()), 1000);
+          });
+        }
+        // 如果任务失败，则抛出异常
+        else {
+          this.$alert("下载失败，请重新尝试！");
+          this.disabledProductFolder = false;
+          throw new Error(`Task failed `);
+        }
       });
-      this.selectDisable = false;
+    },
+    checkSplit() {
+      let params = {
+        splitTaskId: this.splitTaskId,
+      };
+      // console.log("checkSplit:",params);
+      this.$axios.checkSplitStatus(params).then((res) => {
+        const status = res.status;
+        console.log(status);
+        // 如果任务已经完成，则返回任务结果
+        if (status === "SUCCESS") {
+          this.bmpLoading = false;
+          this.$alert("SUCCESS");
+        }
+        // 如果任务正在处理中，则等待一段时间后再次查询
+        else if (status === "PENDING") {
+          return new Promise((resolve) => {
+            setTimeout(() => resolve(this.checkSplit()), 5000);
+          });
+        }
+        // 如果任务失败，则抛出异常
+        else {
+          this.$alert("Task failed！");
+          throw new Error(`Task failed `);
+        }
+      });
     },
     splitBmp() {
       this.splitAble = true;
@@ -384,73 +587,241 @@ export default {
         bmpCol: this.bmpCol,
         bmpHeight: this.bmpHeight,
       };
-      this.$axios.splitBmp(params).then((res) => {
-        console.log(res);
-        this.bmpLoading = false;
-        this.$alert("影像已切割");
-      });
+      console.log("splitBmp:", params);
+      return this.$axios.splitBmp(params).then(
+        (res) => {
+          console.log(res);
+          // this.bmpLoading = false;
+          this.splitTaskId = res;
+        },
+        (err) => {
+          this.$alert("切割失败，请重新尝试！");
+        }
+      );
+    },
+    // 一维数组转二维数组
+    construct2DArray(original, m, n) {
+      if (original.length !== m * n) {
+        return [];
+      }
+      const ans = new Array(m).fill(0).map(() => new Array(n).fill(0));
+      for (let i = 0; i < original.length; i += n) {
+        ans[Math.floor(i / n)].splice(0, n, ...original.slice(i, i + n));
+      }
+      return ans;
+    },
+    BmpDraw() {
+      let that = this;
+      var canvas = this.$refs.BmpCanvas;
+      var ctx = canvas.getContext("2d");
+      var bmpImg = new Image();
+      bmpImg.src = this.Bmp_img;
+
+      // let params = {
+      //   burstParam: this.burstParam,
+      //   bmpPolygonPixel: this.bmpPolygonPixel,
+      // };
+      // console.log("params",params);
+
+      // this.$axios.getBmpPixel(params).then((res) => {
+      //   console.log("1111111111");
+      // });
+
+      bmpImg.onload = function () {
+        ctx.drawImage(bmpImg, 0, 0, 1000, 250);
+        let params = {
+          burstParam: that.burstParam,
+          bmpPolygonPixel: that.bmpPolygonPixel,
+          bmpTitle: that.cutTime + ".rslc.bmp",
+          folderName: that.folderName,
+        };
+        console.log(22222, params);
+        that.$axios.getBmpPixel(params).then((res) => {
+          console.log("1111111111", res);
+          that.bmpRow = res["x_start"];
+          that.bmpCol = res["y_start"];
+          that.bmpHeight = res["bmpHeight"];
+          that.bmpWidth = res["bmpWidth"];
+
+          let new_points = res["new_points"];
+          let out_rectangle = res["out_rectangle"];
+          let out_rectangle_width = res["out_width"];
+          let out_rectangle_height = res["out_height"];
+
+          let leftTop = new_points[0];
+          let rightTop = new_points[1];
+          let rightBottom = new_points[2];
+          let leftBottom = new_points[3];
+          // // 绘制四边形
+          ctx.beginPath();
+          ctx.moveTo(leftTop[0], leftTop[1]);
+          ctx.lineTo(rightTop[0], rightTop[1]);
+          ctx.lineTo(rightBottom[0], rightBottom[1]);
+          ctx.lineTo(leftBottom[0], leftBottom[1]);
+          ctx.closePath();
+          ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+          ctx.fill();
+
+          ctx.strokeStyle = "white";
+          ctx.strokeRect(
+            out_rectangle[0][0],
+            out_rectangle[0][1],
+            out_rectangle_width,
+            out_rectangle_height
+          );
+          ctx.stroke();
+        });
+      };
     },
     draw() {
+      let that = this;
       var canvas = this.$refs.mycanvas;
       var ctx = canvas.getContext("2d");
       var img = new Image();
       img.src = this.SLC_img;
+      canvas.width = 400;
+      canvas.height = 240;
+      let bigLnglat = that.construct2DArray(that.footprint, 4, 2);
+      let smallLnglat = that.construct2DArray(that.demFootPrint, 4, 2);
       img.onload = function () {
-        ctx.drawImage(img, 0, 0, 240, 400);
-        // 设置间隔
-        var space = 80;
+        const scaleX = canvas.height / img.width;
+        const scaleY = canvas.width / img.height;
+        const scale = Math.max(scaleX, scaleY);
 
-        var ySpace = 40;
-        // 定义当前坐标
-        var x = 0,
-          y = 0;
-        // 设置虚线
-        ctx.setLineDash([5, 10]);
-        //绘制水平方向的网格线
-        for (y = ySpace; y < canvas.height; y += ySpace) {
-          //开启路径
+        // 计算绘制时的偏移量，使图像的中心和画布的中心重合
+        const offsetX = (canvas.width - img.height * scale) / 2;
+        const offsetY = (canvas.height - img.width * scale) / 2;
+
+        // 保存画布状态
+        ctx.save();
+
+        // 将画布移动到画布中心
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+
+        // 将画布逆时针旋转90度
+        ctx.rotate(-Math.PI / 2);
+
+        // 缩放画布，将图像的最大尺寸渲染至画布大小
+        ctx.scale(scale, scale);
+
+        // 将旋转后的图像居中渲染到画布上
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+        // 恢复画布状态
+        ctx.restore();
+        console.log(bigLnglat);
+        let params = {
+          bigLnglat: bigLnglat,
+          smallLnglat: smallLnglat,
+        };
+        console.log(params);
+        that.$axios.getPixel(params).then((res) => {
+          console.log(res);
+          var leftTop = res.leftTop;
+          var leftBottom = res.leftBottom;
+          var rightTop = res.rightTop;
+          var rightBottom = res.rightBottom;
+          that.bmpPolygonPixel = [
+            res.leftTop,
+            res.rightTop,
+            res.rightBottom,
+            res.leftBottom,
+          ];
+          console.log(that.bmpPolygonPixel);
+          // // 绘制四边形
           ctx.beginPath();
+          ctx.moveTo(leftTop[0], leftTop[1]);
+          ctx.lineTo(rightTop[0], rightTop[1]);
+          ctx.lineTo(rightBottom[0], rightBottom[1]);
+          ctx.lineTo(leftBottom[0], leftBottom[1]);
+          ctx.closePath();
+          ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+          ctx.fill();
+          var xSpacing = canvas.width / 10; // 水平间隔
+          var xStart = 0; // 起点X坐标
+          var yStart = 0; // 起点Y坐标
+          var yEnd = canvas.height; // 终点Y坐标
+          ctx.setLineDash([5, 5]); // 设置虚线样式
+          ctx.strokeStyle = "#000"; // 设置线条颜色
 
-          ctx.moveTo(0, y);
-          ctx.lineTo(canvas.width, y);
-          ctx.stroke();
-        }
-        //绘制垂直方向的网格线
-        for (x = space; x < canvas.width; x += space) {
-          //开启路径
-          ctx.beginPath();
+          for (var i = 0; i < 10; i++) {
+            ctx.font = "20px Arial";
+            var x = xStart + i * xSpacing;
+            ctx.beginPath();
+            ctx.moveTo(x, yStart);
+            ctx.lineTo(x, yEnd);
+            ctx.stroke();
+            // 标注刻度
+            ctx.fillStyle = "#fff";
+            ctx.fillText(i + 1, x + xSpacing / 2, 20);
+          }
 
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, canvas.height);
-          ctx.stroke();
-        }
+          // 垂直方向画3等分的虚线，并标注刻度
+          var ySpacing = canvas.height / 3; // 垂直间隔
+          var xStart = 0; // 起点X坐标
+          var xEnd = canvas.width; // 终点X坐标
+
+          for (var i = 0; i < 3; i++) {
+            ctx.font = "20px Arial";
+            var y = i * ySpacing;
+            ctx.beginPath();
+            ctx.moveTo(xStart, y);
+            ctx.lineTo(xEnd, y);
+            ctx.stroke();
+            // 标注刻度
+            ctx.fillStyle = "#fff";
+            ctx.fillText(3 - i, xEnd + 5, y + 3);
+            ctx.fillText("iw" + String(3 - i), 0, y + ySpacing / 2);
+          }
+        });
       };
     },
     productTops() {
-      this.bmpShow = false;
-      this.fileProductAble = true;
+      // this.bmpShow = false;
+      // this.fileProductAble = true;
+      // this.productTopsButtonShow = true;
       let params = {
-        iw: this.iw_value,
-        burst_num: this.burst_num,
-        burst_first: this.burst_first,
+        burstParam: this.burstParam,
         cutTime: this.cutTime,
         folderName: this.folderName,
       };
-
-      this.$axios.productTOPS(params).then(
-        (res) => {
-          console.log("res", res);
-          this.$alert("TOPS文件已生成，请在后台查看！");
-        },
-        (err) => {
-          console.log("error", err);
-          this.$alert("TOPS文件已生成，请在后台查看");
+      console.log(params);
+      this.$axios.productTOPS(params).then((res) => {
+        console.log("res", res);
+        this.$alert("TOPS文件正在后台生成，请耐心等待！");
+        this.taskId = res;
+        this.topTaskStateShow = false;
+      });
+    },
+    getTaskStatus() {
+      let taskId = this.taskId;
+      console.log(taskId);
+      this.$axios.getTaskStatus({ task_id: taskId }).then((res) => {
+        const status = res.status;
+        this.bmpShow = false;
+        console.log(status, status === "PENDING");
+        if (status === "SUCCESS") {
+          // 异步任务已完成
+          this.$alert("任务已完成！");
+          this.bmpShow = false;
+        } else if (status === "FAILURE") {
+          // 异步任务失败
+          throw new Error("Task failed");
+        } else if (status === "PENDING") {
+          // 异步任务进行中
+          this.$alert("任务进行中！");
         }
-      );
+        // else {
+        //   // 异步任务还在进行中，继续轮询
+        //   return new Promise((resolve) => setTimeout(resolve, 1000)).then(() =>
+        //     getTaskStatus(taskId)
+        //   );
+        // }
+      });
     },
     showBmp() {
       this.runAble = false;
-      this.bmpShow = true;
+      // this.bmpShow = true;
       let params = {
         bmpTitle: this.cutTime + ".rslc.bmp",
         // bmpTitle:"20220901.rslc.bmp",
@@ -463,8 +834,14 @@ export default {
         console.log(this.Bmp_img);
         this.bmpLoading = false;
       });
+      this.BmpCanvasFlag = 1;
+
+      let that = this;
+      var canvas = this.$refs.mycanvas;
+      var ctx = canvas.getContext("2d");
+      var img = new Image();
+      img.src = this.Bmp_img;
       this.dialogVisible = true;
-      // this.canvasFlag = 1;
     },
     async showImg() {
       this.imgShow = true;
@@ -477,24 +854,43 @@ export default {
       this.$axios.getImg(params).then((res) => {
         const myBlob = new window.Blob([res], { type: "image/png" });
         this.SLC_img = window.URL.createObjectURL(res.data);
-
-        console.log(this.SLC_img);
       });
       this.loading = false;
       this.canvasFlag = 1;
     },
 
-    changeIWValue() {
+    changeIWValue(val) {
       this.inputShow = false;
-      console.log(this.iw_value);
+      console.log(val);
     },
     changeCutValue() {
       this.runAble = false;
       this.disabledProductCoordinateFileandOPOD = false;
-      console.log(this.selectValue);
-      console.log(this.selectValue.slice(17, 25));
       this.cutTime = this.selectValue.slice(17, 25);
     },
+
+    changeBurstParam(row) {
+      switch (row.iw) {
+        case 1:
+          this.burstParam.iw1.burst_start = row.burst_start;
+          this.burstParam.iw1.burst_nums = row.burst_num;
+          break;
+        case 2:
+          this.burstParam.iw2.burst_start = row.burst_start;
+          this.burstParam.iw2.burst_nums = row.burst_num;
+          break;
+        case 3:
+          this.burstParam.iw3.burst_start = row.burst_start;
+          this.burstParam.iw3.burst_nums = row.burst_num;
+          break;
+      }
+      console.log(row, this.burstParam);
+    },
+    // test(selection, row) {
+    //   let selected = selection.length && selection.indexOf(row) !== -1;
+    //   console.log(selected); // true就是选中，0或者false是取消选中
+    // },
+
     productList() {
       this.selectDisable = false;
       // console.log(this.options);
@@ -512,73 +908,99 @@ export default {
         }
       );
     },
-    addEntity(selection, row) {
-      console.log(selection, row);
-      let selected = selection.length && selection.indexOf(row) !== -1;
-      let redID = row.fileName;
-      let whiteID = "dem" + row.fileName;
-      if (selected === true) {
-        // row.isDisabled = true; //这个isDisabled 是每行数据里都存在的一个属性
-        let params = {
-          title: row.fileName,
-        };
-        this.$axios.getFootprintAndDemFootprint(params).then(
-          (res) => {
-            // console.log(res);
-            let footprint = res["footprint"];
-            let demFootPrint = res["demFootPrint"];
-            // console.log(footprint);
-
-            let whiteEntity = !this.viewer.entities.getById(whiteID)&&this.viewer.entities.add({
+    drawFootprintAndDemFootprint(title, redID, whiteID) {
+      // row.isDisabled = true; //这个isDisabled 是每行数据里都存在的一个属性
+      let that = this;
+      let params = {
+        title: title,
+      };
+      this.$axios.getFootprintAndDemFootprint(params).then(
+        (res) => {
+          // console.log(res);
+          that.footprint = res["footprint"];
+          that.demFootPrint = res["demFootPrint"];
+          // console.log(that.footprint, that.demFootPrint);
+          let tem = this.construct2DArray(that.footprint, 4, 2);
+          // console.log(that.footprint.length, tem);
+          let whiteEntity =
+            !this.viewer.entities.getById(whiteID) &&
+            this.viewer.entities.add({
               id: whiteID,
               name: "polygon_height",
               polygon: {
                 show: true,
-                hierarchy: Cesium.Cartesian3.fromDegreesArray(demFootPrint),
+                hierarchy: Cesium.Cartesian3.fromDegreesArray(
+                  that.demFootPrint
+                ),
                 height: 0,
-                material: Cesium.Color.WHITE.withAlpha(0.3),
+                material: Cesium.Color.WHITE.withAlpha(0.1),
                 fill: true,
                 outline: true,
                 outlineWidth: 1.0,
                 outlineColor: Cesium.Color.WHITE,
               },
             });
-            // console.log(whiteEntity);
-            let redEntity = !this.viewer.entities.getById(redID)&&this.viewer.entities.add({
+          // console.log(whiteEntity);
+          let redEntity =
+            !this.viewer.entities.getById(redID) &&
+            this.viewer.entities.add({
               id: redID,
               name: "polygon_height",
               polygon: {
                 show: true,
-                hierarchy: Cesium.Cartesian3.fromDegreesArray(footprint),
+                hierarchy: Cesium.Cartesian3.fromDegreesArray(that.footprint),
                 height: 0,
-                material: Cesium.Color.RED.withAlpha(0.3),
+                material: Cesium.Color.RED.withAlpha(0.1),
                 fill: true,
                 outline: true,
                 outlineWidth: 1.0,
                 outlineColor: Cesium.Color.RED,
               },
             });
-            redEntity && this.viewer.flyTo(redEntity, {
+          redEntity &&
+            this.viewer.flyTo(redEntity, {
               offset: new Cesium.HeadingPitchRange(0, -90, 1500000),
             });
-          },
-          (err) => {
-            console.log(23232, err);
-          }
-        );
+        },
+        (err) => {
+          console.log(23232, err);
+        }
+      );
+    },
+
+    addEntity(selection, row) {
+      var that = this;
+      console.log(selection, row);
+      let selected = selection.length && selection.indexOf(row) !== -1;
+      let redID = row.fileName;
+      let whiteID = "dem" + row.fileName;
+      if (selected === true) {
+        // // row.isDisabled = true; //这个isDisabled 是每行数据里都存在的一个属性
+
+        this.drawFootprintAndDemFootprint(row.fileName, redID, whiteID);
       } else {
         // row.isDisabled = false;
-        console.log(row.fileName);
-
         let whiteID = row.fileName;
         let redID = "dem" + row.fileName;
         this.viewer.entities.removeById(whiteID);
         this.viewer.entities.removeById(redID);
       }
     },
+    selectAll(selections) {
+      if (selections.length == 0) {
+        this.viewer.entities.removeAll();
+      } else {
+        for (let i = 0; i < selections.length; i++) {
+          const element = selections[i];
+          let redID = element.fileName;
+          let whiteID = "dem" + element.fileName;
+          this.drawFootprintAndDemFootprint(element.fileName, redID, whiteID);
+        }
+      }
+    },
     handleSelectionChange(val) {
       this.multipleSelection = val;
-      this.options = val;
+      this.options_cut = val;
     },
     handleClose(done) {
       this.$confirm("确认关闭？")
@@ -629,13 +1051,20 @@ export default {
   font-size: 14px;
 }
 
-/* ::v-deep .el-dialog__body .el-table {
-  margin-left: 20px;
-} */
+::v-deep
+  .el-popup-parent--hidden
+  .el-drawer__container
+  .el-drawer__open
+  .el-drawer
+  .rtl {
+  width: 35% !important;
+}
+
 ::v-deep .el-drawer__body .el-button {
   margin-top: 5px;
   margin-left: 5px;
   margin-right: 5px;
+  float: right;
 }
 
 ::v-deep .el-dialog {
@@ -654,6 +1083,13 @@ export default {
   margin-top: 0;
   width: 1000px;
   height: 250px;
+}
+
+::v-deep .el-table__header .el-table-column--selection .cell .el-checkbox {
+  /* display: none; */
+}
+::v-deep .el-table__header .el-table-column--selection .cell:before {
+  content: "选择";
 }
 
 /* .bmp_input{
@@ -683,8 +1119,11 @@ img {
 }
 
 .SLC_img {
-  float: left;
-  margin-left: 5px;
+  /* background-color: rgba(63, 72, 84, 0.3); */
+  margin-top: 10px;
+
+  /* height: 245px; */
+  /* padding: 0; */
 }
 
 .burst {

@@ -11,7 +11,12 @@
       </div>
       <div class="buttonList">
         <button @click="drawPolygon">区域选择</button>
-        <button @click="dataSearch">数据查询</button>
+        <button @click="dataSearch().then(() => checkSearch())">
+          数据查询
+        </button>
+        <button @click="downloadManageShow = !downloadManageShow">
+          下载管理
+        </button>
         <button @click="clear">清除</button>
         <!-- <button class="download" v-show="isDownload" @click="download">
           数据下载
@@ -31,6 +36,8 @@
           :row-class-name="tableRowClassName"
           @row-click="polygonFill"
         >
+          <!-- <el-table-column prop="index" label="序号" align="center">
+          </el-table-column> -->
           <el-table-column prop="title" label="文件名" align="center">
           </el-table-column>
           <el-table-column
@@ -52,6 +59,64 @@
             </template>
           </el-table-column>
         </el-table>
+
+        <el-dialog
+          title="下载管理"
+          :visible.sync="downloadManageShow"
+          width="40%"
+          append-to-body
+        >
+          <el-table
+            :data="SLCDownloadList"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column label="日期" width="180">
+              <template slot-scope="scope">
+                <i class="el-icon-time"></i>
+                <span style="margin-left: 10px">{{ scope.row.fileTime }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="产品" width="180">
+              <template slot-scope="scope">
+                <el-popover trigger="hover" placement="top">
+                  <p>fileTitle: {{ scope.row.fileTitle }}</p>
+                  <p>fileSize: {{ scope.row.fileSize }}</p>
+                  <div slot="reference" class="name-wrapper">
+                    <el-tag size="medium">{{
+                      scope.row.fileTitle.slice(-4)
+                    }}</el-tag>
+                  </div>
+                </el-popover>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作">
+              <template slot-scope="scope">
+                <!-- <el-button
+                  size="mini"
+                  @click="handleEdit(scope.$index, scope.row)"
+                  >编辑</el-button
+                > -->
+                <el-button
+                  size="mini"
+                  type="danger"
+                  @click="handleDelete(scope.$index, scope.row)"
+                  >删除</el-button
+                >
+              </template>
+            </el-table-column>
+            <el-table-column type="selection" width="55"> </el-table-column>
+          </el-table>
+          <span slot="footer" class="dialog-footer">
+            <el-button
+              type="primary"
+              @click="downloadForList()"
+              size="mini"
+              >下载</el-button
+            >
+          </span>
+        </el-dialog>
+
         <el-dialog
           title="文件详情"
           :visible.sync="dialogVisible"
@@ -59,6 +124,9 @@
           append-to-body
         >
           <el-descriptions class="margin-top" :column="2" size="mini" border>
+            <el-descriptions-item span="2" label="序号">
+              {{ fileOrder }}
+            </el-descriptions-item>
             <el-descriptions-item span="2" label="文件名">
               {{ fileTitle }}
             </el-descriptions-item>
@@ -74,18 +142,11 @@
             <el-descriptions-item label="时间">
               {{ fileTime }}
             </el-descriptions-item>
-
-            <el-descriptions-item label="Mode">
-              {{ fileMode }}
-            </el-descriptions-item>
-            <el-descriptions-item label="Online">
-              {{ Online }}
-            </el-descriptions-item>
             <el-descriptions-item label="Instrument">
               {{ Instrument }}
             </el-descriptions-item>
-            <el-descriptions-item label="productclass">
-              {{ productclass }}
+            <el-descriptions-item label="Online">
+              {{ Online }}
             </el-descriptions-item>
           </el-descriptions>
 
@@ -93,8 +154,11 @@
             <el-button @click="dialogVisible = false" size="mini"
               >取 消</el-button
             >
-            <el-button type="primary" @click="downloadById(fileid)" size="mini"
-              >下 载</el-button
+            <el-button
+              type="primary"
+              @click="addToDownloadList(fileid, fileTitle, fileSize, fileTime, Online)"
+              size="mini"
+              >加入下载队列</el-button
             >
           </span>
         </el-dialog>
@@ -113,6 +177,11 @@ import footerVue from "../layout/footer.vue";
 export default {
   data() {
     return {
+      SLCDownloadList: [
+      ],
+      downloadList:[],
+      downloadManageShow: false,
+      seachTaskId: "",
       startDate: "",
       endDate: "",
       tableData: [],
@@ -121,11 +190,13 @@ export default {
       loading: true,
       isDownload: false,
       footprints: [],
+      unActiveList: [],
+      fileOrder: "",
       fileid: "",
       fileSize: "",
       fileTitle: "",
       fileTime: "",
-      fileMode: "",
+      // fileMode: "",
       Instrument: "",
       productclass: "",
       res: "",
@@ -151,19 +222,26 @@ export default {
   mounted() {
     DrawTool.initParam(this.viewer, this.$refs.prompt);
   },
+  // watch: {
+  //   SLCDownloadList: function (newList, oldList) {
+  //     if (newList.length > 0) {
+  //       this.myFunction();
+  //     }
+  //   },
+  // },
   methods: {
     detail(rowIndex) {
       console.log(this.res);
       this.dialogVisible = !this.dialogVisible;
-      this.fileid = this.footprints[rowIndex].properties.id;
-      this.fileMode = this.footprints[rowIndex].properties.polarisationmode;
+      this.fileOrder = rowIndex;
+      this.fileid = this.res.products[rowIndex].id;
+      // this.fileMode = this.footprints[rowIndex].properties.polarisationmode;
       this.fileSize = this.res.products[rowIndex].size;
-      this.fileTitle = this.footprints[rowIndex].properties.title;
+      this.fileTitle = this.res.products[rowIndex].title;
       this.fileTime = this.res.products[rowIndex].date;
       this.Online = this.res.products[rowIndex].Online;
-      this.Instrument =
-        this.footprints[rowIndex].properties.instrumentshortname;
-      this.productclass = this.footprints[rowIndex].properties.productclass;
+      this.Instrument = this.res.products[rowIndex].ingestion;
+      // this.productclass = this.footprints[rowIndex].properties.productclass;
     },
     tableRowClassName({ row, rowIndex }) {
       row.index = rowIndex;
@@ -197,71 +275,88 @@ export default {
       }
       return rets;
     },
-    downloadById(productId){
+    addToDownloadList(fileid, fileTitle, fileSize, fileTime, Online) {
+      let item = {
+        fileid: fileid,
+        fileTitle: fileTitle,
+        fileSize: fileSize,
+        fileTime: fileTime,
+        Online: Online,
+        demFootPrint: DrawTool.pointArrForDegrees,
+      };
+      if(JSON.stringify(this.SLCDownloadList).indexOf(JSON.stringify(item)) == -1){
+        this.SLCDownloadList.push(item);
+        this.$alert("已放入下载队列！");
+      }else{
+        this.$alert("下载队列已存在该数据！");
+      }
+
+    },
+    downloadForList(){
+      let params = {
+        downloadList:this.downloadList
+      }
+      console.log(params);
+      this.$axios.downloadForList(params).then((res)=>{
+        console.log(res);
+      })
+      this.downloadList = []
+      this.$alert("后台下载，请耐心等待！");
+    },
+    downloadById(productId, productTitle) {
       let params = {
         productId: productId,
-        demFootPrint:DrawTool.pointArrForDegrees,
-      }; 
-      console.log(params);
-      this.$alert("正在后台下载，请耐心等待！", "通知", {
-        confirmButtonText: "确定",
-        callback: (action) => {
-          this.$axios.downloadById(params).then((res) => {
-            console.log(res);
-          });
-        },
-      });
-      this.dialogVisible = false
-    },
-    download() {
-      
-      let params = {
-        startDate: this.startDate,
-        endDate: this.endDate,
-        geojson: this.geojson,
+        productTitle: productTitle,
+        demFootPrint: DrawTool.pointArrForDegrees,
       };
-      this.$alert("正在后台下载，请耐心等待！", "通知", {
-        confirmButtonText: "确定",
-        callback: (action) => {
-          this.$axios.downloadSLC(params).then((res) => {
-            console.log(res);
-            if(res == 'failed'){
-              this.$alert("下载失败")
-            }
-          });
-        },
-      });
-    },
+      console.log(params);
 
-    dataSearch() {
-      const that = this;
-      this.loading = true;
-      this.tableData = [];
-      this.fileListShow = true;
-      this.geojson.features[0].geometry.coordinates = [
-        DrawTool.pointArrForDegrees,
-      ];
+      this.$axios.downloadById(params).then((res) => {
+        console.log(res);
+        if (res == "existed") {
+          this.$alert("该文件已存在！");
+        } else {
+          let item = {
+            productTitle: productTitle,
+            status: "PENDING",
+          };
+          this.SLCDownloadList.push(item);
+          this.$alert("已放入下载队列，请耐心等待！");
+        }
+      });
+
+      this.dialogVisible = false;
+    },
+    triggerAndDownLoadOffline() {
+      console.log("triggerAndDownLoadOffline");
       let params = {
-        startDate: this.startDate,
-        endDate: this.endDate,
-        geojson: this.geojson,
+        unActiveList: this.unActiveList,
       };
-      console.log(params);
-      this.$axios.getSLCData(params).then(
-        (res) => {
-          if (res.success) {
+      this.$axios.triggerAndDownLoadOffline(params).then((res) => {
+        console.log(res);
+      });
+    },
+    checkSearch() {
+      let params = {
+        task_id: this.seachTaskId,
+      };
+      // console.log(params);
+      this.$axios.getTaskStatus(params).then((res) => {
+        const status = res.status;
+        console.log(status);
+        // 如果任务已经完成，则返回任务结果
+        if (status === "SUCCESS") {
+          if (res.result.success) {
             console.log("res:", res);
-            this.res = res;
-            this.tableData = res.products;
-            this.fileNum = res.total_num;
+            this.res = res.result;
+            this.tableData = res.result.products;
+            this.fileNum = res.result.total_num;
             this.loading = false;
             this.isDownload = true;
-            this.footprints = res.footprint;
-            this.footprints.forEach((item, index) => {
-              let footprint = item.geometry.coordinates[0];
-              // console.log(footprint);
-              
-              let degreesArray = this.flatten(footprint);
+            this.footprints = res.result.footprint;
+            res.result.products.forEach((item, index) => {
+              // console.log(item);
+              let degreesArray = item["footprint"];
               console.log(degreesArray);
               this.viewer.entities.add({
                 id: "polygon_" + index,
@@ -286,21 +381,69 @@ export default {
             this.loading = true;
             this.$alert("网络中断或初始条件错误！", "警告", {
               confirmButtonText: "确定",
-              // callback: (action) => {
-              //   this.$message({
-              //     type: "info",
-              //     message: `action: ${action}`,
-              //   });
-              // },
             });
           }
+        }
+        // 如果任务正在处理中，则等待一段时间后再次查询
+        else if (status === "PENDING") {
+          return new Promise((resolve) => {
+            setTimeout(() => resolve(this.checkSearch()), 1000);
+          });
+        }
+        // 如果任务失败，则抛出异常
+        else {
+          this.$alert("下载失败，请重新尝试！");
+          throw new Error(`Task failed `);
+        }
+      });
+    },
+    dataSearch() {
+      // DrawTool.destroyPolygon();
+
+      // for (let i = 0; i < this.fileNum; i++) {
+      //   console.log(this.viewer.entities);
+      //   this.viewer.entities.removeById("polygon_" + i);
+      // }
+      // this.fileNum = "";
+
+      const that = this;
+      this.loading = true;
+      this.tableData = [];
+      this.fileListShow = true;
+      this.geojson.features[0].geometry.coordinates = [
+        DrawTool.pointArrForDegrees,
+      ];
+      let params = {
+        startDate: this.startDate,
+        endDate: this.endDate,
+        geojson: this.geojson,
+      };
+      console.log(params);
+      return this.$axios.getSLCData(params).then(
+        (res) => {
+          console.log(res);
+          this.seachTaskId = res;
         },
         (err) => {
           this.clear();
         }
       );
     },
-
+    selectAllDownloadSLC(selections){
+      this.downloadList = selections
+      console.log(this.downloadList);
+    },
+    handleEdit(index, row) {
+      console.log(index, row);
+    },
+    handleDelete(index, row) {
+      console.log(index, row);
+      this.SLCDownloadList.splice(index, 1)
+    },
+    handleSelectionChange(val) {
+      console.log(val);
+      this.downloadList = val
+    },
     clear() {
       this.startDate = "";
       this.endDate = "";
@@ -396,15 +539,15 @@ input {
   margin-top: 1px ;
 } */
 
-::v-deep .el-table {
+.fileList ::v-deep .el-table {
   background-color: rgba(63, 72, 84, 0);
   color: #fff;
 }
-::v-deep .el-table th {
+.fileList ::v-deep .el-table th {
   background-color: rgba(63, 72, 84, 0.15);
   /* color: white; */
 }
-::v-deep .el-table tr {
+.fileList ::v-deep .el-table tr {
   background-color: rgba(63, 72, 84, 0.15);
 }
 ::v-deep .el-loading-spinner .el-loading-text {

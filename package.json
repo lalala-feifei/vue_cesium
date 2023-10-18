@@ -14,12 +14,16 @@
     "console": "^0.7.2",
     "core-js": "^3.6.5",
     "dateformat-util": "^1.0.5",
+    "echarts": "^5.4.1",
+    "echarts-stat": "^1.2.0",
     "element-ui": "^2.15.10",
     "file-loader": "^6.2.0",
     "gcoord": "^0.3.2",
     "jquery": "^3.6.1",
+    "papaparse": "^5.4.0",
     "url-loader": "^4.1.1",
     "vue": "^2.6.11",
+    "vue-csv-import": "^4.1.2",
     "vue-router": "^3.2.0"
   },
   "devDependencies": {

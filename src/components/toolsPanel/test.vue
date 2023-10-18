@@ -1,183 +1,401 @@
 <template>
-    <div id="customPositionDiv">
-        <div style="width: 1460px; height:740px;  background-color: #c0c0c0;
-                    margin:0 auto ; display:-webkit-box;
-                    -webkit-box-align:center; -webkit-box-pack:center; ">
-            <div @mousedown="mousedown" @mousemove="mousemove"
-                 @mouseup="mouseup" @Mouseleave="Mouseleave" :style="imgstyle">
-                <img :src="imgSrc" :style="imgstyle">
-                <canvas ref="table" :width="canvasWidth" :height="canvasHeight" :style="canvasstyle"></canvas>
-            </div>
-        </div>
-        <div style="width: 1450px;z-index: inherit;text-align: right ;margin:10px 0 0 0">
-            <span slot="footer" class="dialog-footer">
-                <el-button @click="customClose">取 消</el-button>
-                <el-button type="primary" @click="customQuery">确 定</el-button>
-            </span>
-        </div>
-    </div>
- 
+  <div class="data_visualization">
+    <input
+      class="fileSelect"
+      type="file"
+      accept=".csv"
+      @change="handleFileChange"
+    />
+    <button class="rendering" @click="productPoints">渲染</button>
+    <el-dialog
+      title="Single TS selection"
+      :visible.sync="dialogVisible"
+      append-to-body
+      width="30%"
+      height="60%"
+      :before-close="handleClose"
+      v-dialogDrag
+    >
+      <el-form
+        ref="form"
+        class="my_form"
+        :model="formInline"
+        label-width="80px"
+      >
+        <el-row>
+          <el-col :span="8">
+            <el-form-item class="my-form-item">
+              <span>Case Study</span>
+              <el-select
+                v-model="formInline.region"
+                placeholder="testname"
+                size="mini"
+              >
+                <el-option label="区域一" value="shanghai"></el-option>
+                <el-option label="区域二" value="beijing"></el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item class="my-form-item">
+              <span>Date of event</span>
+              <el-date-picker
+                v-model="time"
+                type="date"
+                placeholder="选择日期"
+                style="width: 100%"
+                size="mini"
+              >
+              </el-date-picker>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item class="my-form-item">
+              <span>Add Trendline</span>
+              <el-select
+                v-model="optionType"
+                placeholder="Connect MP"
+                size="mini"
+                @change="optionChange"
+              >
+                <el-option label="line" value="line"></el-option>
+                <el-option label="scatter" value="scatter"></el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item class="echart_item">
+          <div id="echart"></div>
+        </el-form-item>
+      </el-form>
+    </el-dialog>
+  </div>
 </template>
-<style lang="scss">
- 
-</style>
+
 <script>
- 
-    import vue from 'vue';
- 
-    export default {
-        name: 'canvasDraw',
-        props: ['imgSrc'],
-        data() {
-            return {
- 
-                //  customPositionShow:false, //自定义位置
-                //   showclose:false,
-                startX: '',  //画画开始的X坐标
-                startY: '',  //画画开始的Y坐标
-                endX: '',    //画画结束的X坐标
-                endY: '',    //画画结束的Y坐标
-                isMouseDownInCanvas: '', //鼠标是否按下
-                customcxt: '',      // cxt
-                customRwidth: '',    //原图与展示图片的宽度比
-                customRheight: '',   //原图与展示图片的高度比
-                imgstyle: '',        //根据图片大小自适应样式
-                canvasstyle: '',     //根据图片大小canvas自适应样式 居中显示
-                canvasWidth: '',     //根据图片大小自适应canvas宽
-                canvasHeight: '',    //根据图片大小自适应canvas高
-                DivWidth: 1460,      //最大宽度
-                DivHeight: 740,      //最大高度
-            };
+import Papa from "papaparse";
+import * as ecStat from "echarts-stat";
+import * as echarts from "echarts";
+import { log } from "console";
+export default {
+  data() {
+    return {
+      pointList: [],
+      dialogVisible: false,
+      formInline: {
+        user: "",
+        region: "",
+      },
+      time: ",",
+      lineData: [],
+      lineTime: "",
+      csvData: [],
+      myChart: "",
+      optionType: null,
+    };
+  },
+  computed: {
+    scatterData() {
+
+      return this.lineTime.map((element, index) => [
+        new Date(element).getTime(),
+        Number(this.lineData[index]),
+      ]);
+    },
+  },
+  mounted() {},
+  methods: {
+    transformDate() {
+      const millisecondsPerSecond = 1000;
+      const secondsPerMinute = 60;
+      const minutesPerHour = 60;
+      const hoursPerDay = 24;
+      const daysBetweenEpochs = 719528;
+      const millisecondsPerDay =
+        millisecondsPerSecond * secondsPerMinute * minutesPerHour * hoursPerDay;
+      this.lineTime = this.lineTime.map((timestamp) => {
+        const millisecondsSinceEpoch = timestamp * millisecondsPerDay;
+        const millisecondsFrom0000To1970 =
+          daysBetweenEpochs * millisecondsPerDay;
+        const date = new Date(
+          millisecondsSinceEpoch - millisecondsFrom0000To1970
+        );
+        return date.toISOString().slice(0, 10);
+      });
+      console.log(this.lineTime); // "0002-03-25"
+    },
+    handleFileChange(event) {
+      const file = event.target.files[0];
+      Papa.parse(file, {
+        complete: (results) => {
+          this.csvData = results.data;
+          this.pointList = results.data.slice(2);
+          this.lineData = results.data[2].slice(3, -1);
+          this.lineTime = results.data[1].slice(3, -1);
+          // console.log(this.lineData, this.lineTime);
+          this.transformDate();
         },
-        watch: {
-            'imgSrc': function () {
-                this.show();
-            },
- 
+      });
+    },
+    productPoints() {
+      var that = this;
+      if (this.viewer.scene.primitives) {
+        //销毁所有
+        this.viewer.scene.primitives.removeAll();
+      }
+      //  生成PointPrimitiveCollection对象
+      var pointCollection = this.viewer.scene.primitives.add(
+        new Cesium.PointPrimitiveCollection()
+      );
+
+      var colorArray = this.pointList.slice(0, -1).map(function (value) {
+        return Number(value[2]);
+      });
+
+      let colorsLength = colorArray.length; // 获取颜色数组的长度
+      // console.log(colorsLength);
+      // 计算数值范围
+
+      var maxCesiumValue = -Infinity;
+      for (var i = 0; i < colorArray.length; i++)
+        if (colorArray[i] > maxCesiumValue) maxCesiumValue = colorArray[i];
+
+      var minCesiumValue = Infinity;
+      for (var j = 0; j < colorArray.length; j++)
+        if (colorArray[j] < minCesiumValue) minCesiumValue = colorArray[j];
+
+      console.log(minCesiumValue, maxCesiumValue);
+
+      // var minCesiumValue = Math.min.apply(null, colorArray);
+      // var maxCesiumValue = Math.max.apply(null, colorArray);
+
+      // console.log(minCesiumValue,maxCesiumValue);
+
+      // for (let i = 0; i < this.pointList.length - 1; i++) {
+      //   var longitude = Number(this.pointList[i][0]);
+      //   var latitude = Number(this.pointList[i][1]);
+
+      //   // 将颜色数值归一化到0到1之间
+      //   var normalizedValue =
+      //     (colorArray[i] - minCesiumValue) / (maxCesiumValue - minCesiumValue);
+
+      //   // 计算对应的Color.hue属性值
+      //   var hueValue = 0.5 + (normalizedValue - 0.5) * 2;
+      //   // console.log(colorArray[i],normalizedValue,hueValue);
+      //   // 创建对应的颜色对象，并设置Color.hue属性
+      //   var color = Cesium.Color.fromHsl(hueValue, 0.4, 0.5);
+
+      //   pointCollection.add({
+      //     position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+      //     color: color,
+      //     id: i,
+      //   });
+      // }
+      function getColorFromValue(value) {
+        if (value >= -33 && value < -11) {
+          return new Cesium.Color.fromBytes(254, 35, 10);
+        } else if (value >= -11 && value < -8) {
+          return new Cesium.Color.fromBytes(255, 134, 7);
+        } else if (value >= -8 && value < -4) {
+          return new Cesium.Color.fromBytes(252, 198, 17);
+        } else if (value >= -4 && value < -1.5) {
+          return new Cesium.Color.fromBytes(242, 254, 30);
+        } else if (value >= -1.5 && value < 0.43) {
+          return new Cesium.Color.fromBytes(204, 254, 129);
+        } else if (value >= 0.43 && value < 2.55) {
+          return new Cesium.Color.fromBytes(148, 253, 194);
+        } else if (value >= 2.55 && value < 5.06) {
+          return new Cesium.Color.fromBytes(22, 253, 255);
+        } else if (value >= 5.06 && value < 8.43) {
+          return new Cesium.Color.fromBytes(88, 184, 255);
+        } else if (value >= 8.43 && value < 13.9) {
+          return new Cesium.Color.fromBytes(107, 110, 254);
+        } else if (value >= 13.9 && value <= 33) {
+          return new Cesium.Color.fromBytes(92, 9, 252);
+        } else {
+          return Cesium.Color.WHITE; // 默认颜色，对于不在任何范围内的值
+        }
+      }
+
+      for (let i = 0; i < this.pointList.length - 1; i++) {
+        var longitude = Number(this.pointList[i][0]);
+        var latitude = Number(this.pointList[i][1]);
+        var colorValue = Number(this.pointList[i][2]);
+
+        var color = getColorFromValue(colorValue);
+
+        pointCollection.add({
+          position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+          color: color,
+          id: i,
+        });
+      }
+
+      this.viewer.camera.flyTo({
+        offset: new Cesium.HeadingPitchRange(0, -90, 1000000),
+        destination: Cesium.Cartesian3.fromDegrees(
+          longitude,
+          latitude,
+          10000.0
+        ),
+      });
+
+      this.dialogVisible = true;
+      var handler = new Cesium.ScreenSpaceEventHandler(
+        that.viewer.scene.canvas
+      );
+
+      handler.setInputAction(function (click) {
+        var pickedObject = that.viewer.scene.pick(click.position);
+        if (Cesium.defined(pickedObject) && pickedObject.id) {
+          // that.lineData = that.csvData[pickedObject.id + 2].slice(3, -1);
+          that.lineData = [
+            2.879774, 1.436196, 1.27909, 1.220698, 0.1403122, 1.36233, 1.142647,
+            1.32657, 2.14447, 1.349807, 1.011574, 1.640374, 1.245198, 0.8276225,
+            1.27709, 0.9823403, -0.4385202, -1.475836, -2.600387, -4.386768,
+            -21.23432, -28.88852,
+          ];
+
+          console.log(that.lineData);
+
+          that.LineOption.series[0].data = that.lineData;
+          that.scatterOption.series[0].data = that.scatterData;
+          console.log(1111111111,that.scatterData);
+          that.dialogVisible = true;
+          that.myChart.setOption(that.scatterOption);
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      this.$nextTick(() => {
+        //  执行echarts方法
+        this.initLineEcharts();
+      });
+    },
+    handleClose(done) {
+      this.$confirm("确认关闭？")
+        .then((_) => {
+          done();
+        })
+        .catch((_) => {});
+    },
+    optionChange(optionType) {
+      if (optionType == "line") {
+        this.myChart.setOption(this.LineOption);
+      } else {
+        this.myChart.setOption(this.scatterOption);
+      }
+    },
+    initLineEcharts() {
+      echarts.registerTransform(ecStat.transform.regression);
+      // 基于准备好的dom，初始化echarts实例
+      this.myChart = echarts.init(document.getElementById("echart"));
+      // 绘制图表
+      this.LineOption = {
+        tooltip: {
+          trigger: "axis",
         },
-        mounted() {
-            this.show();
+        xAxis: {
+          type: "category",
+          data: this.lineTime,
+          boundaryGap: false,
+          axisLabel: {
+            rotate: 60, // 将标签旋转 45 度
+          },
+          axisLine: {
+            onZero: false, //-----------重点
+          },
         },
- 
-        methods: {
-            //取消时返回组件调用处所需的数据
-            customClose() {
-                this.customcxt.clearRect(0, 0, this.DivWidth, this.DivHeight);
-                this.$emit('custom', { 'type': 1, 'data': '' });
-            },
-            //确定时返回组件调用处所需的数据
-            customQuery() {
-                this.customcxt.clearRect(0, 0, this.DivWidth, this.DivHeight);
-                //根据绘制进行图片裁剪
- 
-                //获取矩形框Left，Width'
-                let cLeft = 0;
-                let cWidth = 0;
-                if (this.startX > this.endX) {
-                    cLeft = this.endX;
-                    cWidth = this.startX - this.endX;
-                } else {
-                    cLeft = this.startX;
-                    cWidth = this.endX - this.startX;
-                }
- 
-                //获取矩形框Top，Height
-                let cTop = 0;
-                let cHeight = 0;
-                if (this.startY > this.endY) {
-                    cTop = this.endY;
-                    cHeight = this.startY - this.endY;
-                } else {
-                    cTop = this.startY;
-                    cHeight = this.endY - this.startY;
-                }
- 
-                var oMark = [];
-                oMark['offsetLeft'] = parseInt(cLeft / this.customRwidth);
-                oMark['offsetTop'] = parseInt(cTop / this.customRheight);
-                oMark['offsetWidth'] = parseInt(cWidth / this.customRwidth);
-                oMark['offsetHeight'] = parseInt(cHeight / this.customRheight);
- 
-                this.$emit('custom', { 'type': 2, 'data': oMark });
-            },
- 
-            // dialog展示自定义矩形框画板，
-            // 计算img与canvas标签自适应图片的大小
-            show() {
-                vue.nextTick(_ => {
-                    let customCanvas = this.$refs.table;// canvas显示层
-                    this.customcxt = customCanvas.getContext("2d");
-                    let img = new Image();
-                    img.src = this.imgSrc;
-                    let that = this;
-                    img.onload = function () {
- 
-                        let canvasleft = 0;
-                        let canvastop = 0;
-                        let WrH = img.width / img.height;             //图片宽高比
-                        let RWrH = that.DivWidth / that.DivHeight;    //放置图片DIV的宽高比
-                        let aa = 0;
-                        // 根据宽高比大小判断确定自适应的宽和高
-                        if (RWrH > WrH) {
-                            aa = that.DivHeight / img.height;
-                            that.canvasHeight = that.DivHeight;
-                            that.canvasWidth = img.width * aa;
-                            canvasleft = (that.DivWidth - that.canvasWidth) / 2
-                        } else {
-                            aa = that.DivWidth / img.width;
-                            that.canvasHeight = img.height * aa;
-                            that.canvasWidth = that.DivWidth;
-                            canvastop = (that.DivHeight - that.canvasHeight) / 2
-                        }
-                        that.imgstyle = ' position: relative;  width:' + that.canvasWidth
-                                      + ' px; height:' + that.canvasHeight + 'px'; //img浮动定位居中显示
-                        that.customRwidth = that.canvasWidth / img.width; //原图与展示图片的宽高比
-                        that.customRheight = that.canvasHeight / img.height;
- 
-                        that.canvasstyle = 'position: absolute;left: ' + canvasleft
-                                        + '; top: ' + canvastop + ';' //canvas浮动定位
- 
-                    };
-                })
- 
-            },
-            //鼠标按下时执行
-            mousedown(e) {
-                this.isMouseDownInCanvas = true;
-                // 鼠标按下时开始位置与结束位置相同
-                // 防止鼠标在画完矩形后 点击图画形成第二个图形
-                this.endX = e.offsetX;
-                this.endY = e.offsetY;
-                this.startX = e.offsetX;
-                this.startY = e.offsetY;
-                this.mousemove(e)
- 
-            },
-            //鼠标移动式时执行
-            mousemove(e) {
-                if (this.isMouseDownInCanvas) { // 当鼠标有按下操作时执行
- 
-                    this.endX = e.offsetX;
-                    this.endY = e.offsetY;
-                    let wwidth = this.endX - this.startX;
-                    let wheigth = this.endY - this.startY;
- 
-                    // 清除指定区域的所有像素
-                    this.customcxt.clearRect(0, 0, this.DivWidth, this.DivHeight);
-                    this.customcxt.strokeStyle = " #00ff00"; //矩形框颜色
-                    this.customcxt.lineWidth = "2";  //矩形框宽度
-                    this.customcxt.strokeRect(this.startX, this.startY, wwidth, wheigth);  //绘制矩形
- 
-                }
-            },
-            //鼠标松开时执行
-            mouseup(e) {
-                this.isMouseDownInCanvas = false;
-            },
- 
-            Mouseleave(e) {
-                this.isMouseDownInCanvas = false
-            },
+        yAxis: {
+          type: "value",
         },
-    }
+        series: [
+          {
+            data: this.lineData,
+            type: "line",
+          },
+        ],
+      };
+
+      var regressionData = ecStat.regression("linear", this.scatterData);
+
+      // 指定图表的配置项和数据
+      this.scatterOption = {
+        title: {
+          text: "Scatter Chart with Linear Regression",
+        },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: {
+            animation: false,
+          },
+        },
+        xAxis: {
+          type: "time",
+          boundaryGap: false,
+          axisLine: {
+            onZero: false, //-----------重点
+          },
+          axisLabel: {
+            rotate: 60,
+            formatter: function (value, index) {
+              var date = new Date(value);
+              var month = date.getMonth() + 1;
+              var day = date.getDate();
+              return (
+                date.getFullYear() +
+                "-" +
+                (month < 10 ? "0" + month : month) +
+                "-" +
+                (day < 10 ? "0" + day : day)
+              );
+            },
+          },
+        },
+        yAxis: {
+          type: "value",
+        },
+        series: [
+          {
+            name: "Scatter",
+            type: "scatter",
+            data: this.scatterData,
+          },
+          {
+            name: "Linear Regression",
+            type: "line",
+            data: regressionData.points,
+          },
+        ],
+      };
+
+      this.myChart.setOption(this.scatterOption);
+    },
+  },
+};
 </script>
+
+<style scoped>
+.fileSelect {
+  float: left;
+}
+.rendering {
+  margin-top: 5px;
+  float: left;
+}
+#echart {
+  float: left;
+  width: 25vw;
+  height: 60vh;
+}
+.my-form-item ::v-deep .el-form-item__content {
+  margin-left: 0 !important;
+}
+::v-deep .el-dialog {
+  left: 30%;
+  margin-top: 0 !important;
+}
+.echart_item ::v-deep .el-form-item__content {
+  margin-left: 20px !important;
+}
+</style>

@@ -217,6 +217,10 @@ export default {
           name: "飞行漫游",
           children: [],
         },
+        {
+          name: "数据可视化",
+          children: [],
+        },
       ],
     };
   },
@@ -298,7 +302,7 @@ export default {
               require(["../toolsPanel/drawMarks.vue"], resolve);
           });
           break;
-        case "测试":
+        case "数据可视化":
           self.$nextTick(() => {
             self.dynamicComponents = (resolve) =>
               require(["../toolsPanel/test.vue"], resolve);
